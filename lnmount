@@ -1,0 +1,123 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use File::Spec::Functions qw(catfile rel2abs);
+use Getopt::Long qw(:config gnu_getopt);
+use Pod::Usage;
+
+my $verbose = 0;
+
+sub lnmount_dir {
+    my ($imagedir, $mountpoint, @path) = @_;
+
+    my $dest = catfile($mountpoint, @path);
+    if (!-d $dest) {
+        mkdir($dest) or die("$dest: $!\n");
+    }
+
+    my $src = catfile($imagedir, @path);
+    opendir(my $dh, $src) or die("$src: $!\n");
+    while (my $name = readdir($dh)) {
+        next if $name =~ /^\.\.?$/;
+        lnmount_path($imagedir, $mountpoint, @path, $name);
+    }
+    closedir($dh);
+}
+
+sub lnmount_file {
+    my ($imagedir, $mountpoint, @path) = @_;
+
+    my $src = rel2abs(catfile($imagedir, @path));
+    my $dest = catfile($mountpoint, @path);
+
+    symlink($src, $dest) or die("$dest: $!\n");
+}
+
+sub lnmount_path {
+    my ($imagedir, $mountpoint, @path) = @_;
+
+    my $relpath = catfile(@path);
+    my $src = catfile($imagedir, @path);
+
+    if (-d $src) {
+        print "[DIR ] $relpath\n" if $verbose;
+        lnmount_dir($imagedir, $mountpoint, @path);
+    }
+    elsif (-e $src) {
+        print "[FILE] $relpath\n" if $verbose;
+        lnmount_file($imagedir, $mountpoint, @path);
+    }
+    else {
+        die("What am I supposed to do with $src?\n");
+    }
+}
+
+sub lnmount {
+    my ($imagedir, $mountpoint) = @_;
+
+    if (!-d $imagedir) {
+        die("$imagedir is not a directory\n");
+    }
+
+    lnmount_dir($imagedir, $mountpoint);
+}
+
+sub main {
+    my $man = 0;
+    my $help = 0;
+
+    my %options = (
+        'help|h' => \$help,
+        'man' => \$man,
+        'verbose|v+' => \$verbose,
+    );
+
+    if (!GetOptions(%options)) {
+        print $/ and pod2usage(2);
+    }
+    pod2usage(1) if $help;
+    pod2usage(-exitval => 0, -verbose => 2) if $man;
+
+    pod2usage(1) if @ARGV != 2;
+    my ($imagedir, $mountpoint) = @ARGV;
+
+    lnmount($imagedir, $mountpoint);
+}
+
+main()
+
+__END__
+
+=head1 NAME
+
+lnmount - bind one directory to other using symlinks
+
+=head1 SYNOPSIS
+
+B<lnmount> [F<option>] F<imagedir> F<mountpoint>
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<-h>, B<--help>
+
+Display a brief help message and exit.
+
+=item B<--man>
+
+Display the manual page and exit.
+
+=item B<-v>, B<--verbose>
+
+Explain what is being done.
+
+=back
+
+=head1 DESCRIPTION
+
+Create symlinks to imagedir content in mountpoint directory.
+
+=cut
